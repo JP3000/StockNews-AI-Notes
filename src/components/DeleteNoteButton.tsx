@@ -1,6 +1,5 @@
 "use client";
 
-import { Note } from "@prisma/client";
 import {
   AlertDialog,
   AlertDialogAction,

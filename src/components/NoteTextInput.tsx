@@ -6,15 +6,23 @@ import { ChangeEvent, useEffect } from "react";
 import { debounceTimeout } from "@/lib/constants";
 import useNote from "@/hooks/useNote";
 import { updateNoteAction } from "@/actions/notes";
+import { cn } from "@/lib/utils";
 
 type Props = {
   noteId: string;
   startingNoteText: string;
+  className?: string;
+  textareaClassName?: string;
 };
 
 let updateTimeout: NodeJS.Timeout;
 
-export default function NoteTextInput({ noteId, startingNoteText }: Props) {
+export default function NoteTextInput({
+  noteId,
+  startingNoteText,
+  className,
+  textareaClassName,
+}: Props) {
   const noteIdParam = useSearchParams().get("noteId") || "";
   const { noteText, setNoteText } = useNote();
 
@@ -38,12 +46,15 @@ export default function NoteTextInput({ noteId, startingNoteText }: Props) {
   };
 
   return (
-    <div>
+    <div className={cn("h-full", className)}>
       <Textarea
         value={noteText}
         onChange={handleUpdateNote}
         placeholder="Type your note here..."
-        className="custom-scrollbar placeholder:text-muted-foreground mb-4 h-full max-w-4xl resize-none border p-4 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className={cn(
+          "custom-scrollbar placeholder:text-muted-foreground h-full w-full resize-none border p-4 focus-visible:ring-0 focus-visible:ring-offset-0",
+          textareaClassName,
+        )}
       />
     </div>
   );

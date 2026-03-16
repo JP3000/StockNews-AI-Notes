@@ -6,7 +6,7 @@ import NewNoteButton from "@/components/NewNoteButton";
 import NoteTextInput from "@/components/NoteTextInput";
 import { prisma } from "@/db/prisma";
 import StockInfo from "@/components/stockInfo";
-import { Button } from "@/components/ui/button";
+import { StockNews } from "@/components/stockNews";
 
 type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -28,19 +28,34 @@ export default async function HomePage({ searchParams }: Props) {
   });
 
   return (
-    <div className="flex h-full flex-col items-center gap-4">
-      <div className="flex w-full max-w-4xl justify-end gap-2">
-        <AskAIButton user={user} />
-        <NewNoteButton user={user} />
-        <Button>刷新最新消息</Button>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-4 pb-4">
+      <div className="grid h-full min-h-0 w-full grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="min-h-0">
+          <StockInfo />
+        </div>
 
-      <div className="h-full w-full">
-        <StockInfo />
-      </div>
+        <div className="min-h-0">
+          <StockNews limit={20} className="h-full" />
+        </div>
 
-      <div className="w-full max-w-4xl">
-        <NoteTextInput noteId={noteId} startingNoteText={note?.text || ""} />
+        <div className="min-h-0">
+          <div className="bg-card flex h-full min-h-[620px] flex-col rounded-lg border p-4 shadow-sm">
+            <h2 className="text-base font-semibold">笔记输入</h2>
+            <p className="text-muted-foreground mt-1 text-xs">随时记录你的分析观点和交易想法</p>
+            <div className="mt-3 min-h-0 flex-1">
+              <NoteTextInput
+                noteId={noteId}
+                startingNoteText={note?.text || ""}
+                className="h-full"
+                textareaClassName="h-full min-h-[500px]"
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
+              <AskAIButton user={user} />
+              <NewNoteButton user={user} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

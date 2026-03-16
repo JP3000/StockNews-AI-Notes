@@ -2,54 +2,54 @@
 import React, { useState, useEffect } from "react";
 import { Input } from "./ui/input";
 import StockChart from "./stockChart";
-import { StockNews } from "./stockNews";
+import StockOverviewCard from "./stockOverview";
 import { useDebounce } from "@/hooks/useDebounce";
+import { cn } from "@/lib/utils";
 
-export default function StockInfo() {
+type StockInfoProps = {
+  className?: string;
+};
+
+export default function StockInfo({ className }: StockInfoProps) {
   const [searchText, setSearchText] = useState("");
-  const [symbol, setSymbol] = useState("AAPL"); // 单独管理symbol状态
+  const [symbol, setSymbol] = useState("600519");
   const debouncedSearchText = useDebounce(searchText, 500);
-  const apiKey = process.env.ALPHAVANTAGE_API_KEY as string;
 
-  // 当防抖后的搜索文本变化时更新symbol
   useEffect(() => {
-    if (debouncedSearchText.trim()) {
-      setSymbol(debouncedSearchText.trim().toUpperCase());
+    const normalized = debouncedSearchText.trim();
+    if (/^\d{6}$/.test(normalized)) {
+      setSymbol(normalized);
     }
   }, [debouncedSearchText]);
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="relative mx-auto w-full max-w-md">
+    <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
+      <div className="relative w-full">
         <Input
           className="bg-muted pl-8"
-          placeholder="搜索股票代码..."
+          placeholder="输入A股代码，例如 600519"
           value={searchText}
-          onChange={(e) => setSearchText(e.target.value.toUpperCase())}
+          onChange={(e) =>
+            setSearchText(e.target.value.replace(/\D/g, "").slice(0, 6))
+          }
         />
+        <p className="text-muted-foreground mt-2 text-xs">
+          当前代码：{symbol}
+        </p>
       </div>
 
-      <div className="mx-auto grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="bg-card rounded-lg border p-4 shadow-sm">
-          <StockChart
-            symbol={symbol}
-            interval="daily"
-            timePeriod={90}
-            apiKey={apiKey}
-            chartType="area"
-            showBrush={true}
-            showReferenceLine={true}
-            key={symbol}
-          />
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <StockChart
+          symbol={symbol}
+          interval="daily"
+          timePeriod={90}
+          chartType="area"
+          showBrush={true}
+          showReferenceLine={true}
+          key={symbol}
+        />
 
-        <div className="bg-card rounded-lg border p-4 shadow-sm">
-          <StockNews
-            symbol={symbol}
-            apiKey={apiKey}
-            className="h-[700px]" // 覆盖默认高度
-          />
-        </div>
+        <StockOverviewCard symbol={symbol} compact className="h-[260px]" />
       </div>
     </div>
   );

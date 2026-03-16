@@ -1,7 +1,12 @@
 import OpenAI from 'openai';
 
+const deepseekBaseURL =
+    process.env.DEEPSEEK_API_URL ||
+    process.env.NEXT_PUBLIC_DEEPSEEK_API_URL ||
+    'https://api.deepseek.com';
+
 const openai = new OpenAI({
-    baseURL: process.env.DEEPSEEK_API_URL,
+    baseURL: deepseekBaseURL,
     apiKey: process.env.DEEPSEEK_API_KEY,
 });
 

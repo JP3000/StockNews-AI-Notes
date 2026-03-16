@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "prisma:generate": "pnpm dlx prisma generate",
-    "prisma:migrate": "dotenv -e .env.local -- pnpm dlx prisma migrate dev",
-    "prisma:studio": "pnpm dlx prisma studio",
+    "prisma:generate": "pnpm dlx prisma@6.6.0 generate --schema src/db/schema.prisma",
+    "prisma:migrate": "dotenv -e .env.local -- pnpm dlx prisma@6.6.0 migrate dev --schema src/db/schema.prisma",
+    "prisma:studio": "pnpm dlx prisma@6.6.0 studio --schema src/db/schema.prisma",
     "migrate": "pnpm run prisma:generate && pnpm run prisma:migrate"
   },
   "prisma": {
@@ -37,7 +37,9 @@
     "openai": "^4.94.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
     "recharts": "^2.15.2",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.2.0",
     "tw-animate-css": "^1.2.5",

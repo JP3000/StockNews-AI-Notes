@@ -10,11 +10,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Fragment, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Textarea } from "./ui/textarea";
 import { ArrowUpIcon } from "lucide-react";
 import { askAIAboutNotesAction } from "@/actions/notes";
+import useNote from "@/hooks/useNote";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import "../styles/ai-response.css";
 
 type Props = {
@@ -23,6 +33,9 @@ type Props = {
 
 export function AskAIButton({ user }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { noteText } = useNote();
 
   const [isPending, startTransition] = useTransition();
 
@@ -30,19 +43,41 @@ export function AskAIButton({ user }: Props) {
   const [qustionText, setQuestionText] = useState("");
   const [qustions, setQuestions] = useState<string[]>([]);
   const [responses, setResponses] = useState<string[]>([]);
+  const currentNoteId = searchParams.get("noteId");
 
-  const handleOnOpenChange = (isOpen: boolean) => {
+  const shouldAutoOpen = searchParams.get("ask") === "1";
+
+  const handleOnOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (!user) {
+        router.push("/login");
+      } else {
+        if (isOpen) {
+          setQuestionText("");
+          setQuestions([]);
+          setResponses([]);
+        }
+        setOpen(isOpen);
+      }
+    },
+    [router, user],
+  );
+
+  useEffect(() => {
+    if (!shouldAutoOpen) return;
+
     if (!user) {
       router.push("/login");
-    } else {
-      if (isOpen) {
-        setQuestionText("");
-        setQuestions([]);
-        setResponses([]);
-      }
-      setOpen(isOpen);
+      return;
     }
-  };
+
+    handleOnOpenChange(true);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("ask");
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [handleOnOpenChange, pathname, router, searchParams, shouldAutoOpen, user]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -68,8 +103,21 @@ export function AskAIButton({ user }: Props) {
     setTimeout(scrollToBottom, 100);
 
     startTransition(async () => {
-      const response = await askAIAboutNotesAction(newQuestions, responses);
-      setResponses((prev) => [...prev, response]);
+      try {
+        const response = await askAIAboutNotesAction(
+          newQuestions,
+          responses,
+          currentNoteId,
+          noteText,
+        );
+        setResponses((prev) => [...prev, response]);
+      } catch (error) {
+        console.error(error);
+        setResponses((prev) => [
+          ...prev,
+          "**AI request failed.** Please try again later.",
+        ]);
+      }
 
       setTimeout(scrollToBottom, 100);
     });
@@ -90,7 +138,7 @@ export function AskAIButton({ user }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOnOpenChange}>
       <DialogTrigger asChild>
         <Button variant="secondary">Ask DeepSeek</Button>
       </DialogTrigger>
@@ -113,14 +161,26 @@ export function AskAIButton({ user }: Props) {
                 {qustion}
               </p>
               {responses[index] && (
-                <p
-                  className="bot-response text-muted-foreground"
-                  dangerouslySetInnerHTML={{ __html: responses[index] }}
-                />
+                <div className="bot-response text-muted-foreground">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {responses[index]}
+                  </ReactMarkdown>
+                </div>
               )}
             </Fragment>
           ))}
           {isPending && <p className="animate-pulse text-sm">Thinking...</p>}
+        </div>
+
+        <div className="bg-muted/40 mt-4 rounded-lg border p-3">
+          <p className="text-muted-foreground text-xs font-medium">
+            Current Note Context
+          </p>
+          <p className="text-muted-foreground mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-sm">
+            {noteText?.trim()
+              ? noteText
+              : "No content in the selected note yet. Add some text and ask again."}
+          </p>
         </div>
 
         <div
@@ -142,7 +202,12 @@ export function AskAIButton({ user }: Props) {
             onChange={(e) => setQuestionText(e.target.value)}
           />
 
-          <Button className="ml-auto size-8 rounded-full">
+          <Button
+            type="button"
+            className="ml-auto size-8 rounded-full"
+            onClick={handleSubmit}
+            disabled={isPending}
+          >
             <ArrowUpIcon className="text-background" />
           </Button>
         </div>

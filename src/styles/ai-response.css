@@ -37,6 +37,10 @@
   .bot-response p {
     margin: 0.5em 0;
   }
+
+    .bot-response a {
+      text-decoration: underline;
+    }
   
   .bot-response ul {
     list-style-type: disc;
@@ -66,4 +70,76 @@
   
   .bot-response u {
     text-decoration: underline;
+  }
+
+  .bot-response blockquote {
+    margin: 0.75em 0;
+    border-left: 3px solid hsl(215 20.2% 65.1%);
+    padding-left: 0.75em;
+    color: hsl(215.4 16.3% 46.9%);
+  }
+
+  .bot-response pre {
+    margin: 0.75em 0;
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    background: hsl(210 40% 96.1%);
+    padding: 0.75rem;
+  }
+
+  .bot-response code {
+    border-radius: 0.25rem;
+    background: hsl(210 40% 96.1%);
+    padding: 0.05rem 0.35rem;
+    font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco,
+      Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.86em;
+  }
+
+  .bot-response pre code {
+    background: transparent;
+    padding: 0;
+  }
+
+  .bot-response table {
+    margin: 0.75em 0;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .bot-response th,
+  .bot-response td {
+    border: 1px solid hsl(214.3 31.8% 91.4%);
+    padding: 0.45rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .bot-response th {
+    background: hsl(210 40% 96.1%);
+    font-weight: 600;
+  }
+
+  .bot-response hr {
+    margin: 1rem 0;
+    border: none;
+    border-top: 1px solid hsl(214.3 31.8% 91.4%);
+  }
+
+  .dark .bot-response blockquote {
+    border-left-color: hsl(217.2 32.6% 35%);
+    color: hsl(215 20.2% 80%);
+  }
+
+  .dark .bot-response pre,
+  .dark .bot-response code,
+  .dark .bot-response th {
+    background: hsl(217.2 32.6% 17.5%);
+  }
+
+  .dark .bot-response th,
+  .dark .bot-response td,
+  .dark .bot-response hr {
+    border-color: hsl(217.2 32.6% 25%);
   }

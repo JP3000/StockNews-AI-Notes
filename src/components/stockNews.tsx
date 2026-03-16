@@ -1,163 +1,158 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import {
-  fetchStockNews,
-  FormattedNewsItem,
-} from "../app/api/stock-news/stockNewsService";
+import { useEffect, useState } from "react";
+import { fetchStockNews, StockNewsItem } from "@/app/api/stock-news/stockNewsService";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "./ui/card";
-import { Skeleton } from "./ui/skeleton";
 import { Button } from "./ui/button";
-import { ScrollArea } from "./ui/scroll-area"; // 添加滚动区域组件
+import { Skeleton } from "./ui/skeleton";
+import { ScrollArea } from "./ui/scroll-area";
 
 interface StockNewsProps {
-  symbol: string;
-  apiKey: string;
+  limit?: number;
   className?: string;
 }
 
-export function StockNews({ symbol, apiKey, className }: StockNewsProps) {
-  const [news, setNews] = useState<FormattedNewsItem[]>([]);
+function truncate(text: string, maxLength: number) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength).trim()}...`;
+}
+
+export function StockNews({ limit = 20, className }: StockNewsProps) {
+  const [news, setNews] = useState<StockNewsItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [source, setSource] = useState("stock_info_global_em");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(3);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
-  // 加载更多（改为手动按钮触发）
-  const loadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + 1, news.length));
-  }, [news.length]);
+  const handleRefresh = () => {
+    setRefreshVersion((prev) => prev + 1);
+  };
 
-  // 初始化加载
   useEffect(() => {
+    let active = true;
+
     const loadNews = async () => {
       try {
         setLoading(true);
-        const now = new Date();
-        const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        setError(null);
 
-        const formatForAPI = (date: Date) => {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, "0");
-          const day = String(date.getDate()).padStart(2, "0");
-          return `${year}${month}${day}T0000`;
-        };
+        const newsData = await fetchStockNews(limit);
+        if (!active) return;
 
-        const newsData = await fetchStockNews(
-          [symbol],
-          10,
-          formatForAPI(lastWeek),
-          formatForAPI(now),
-          apiKey,
-        );
-        setNews(newsData);
+        setNews(newsData.items);
+        setTotal(newsData.total);
+        setSource(newsData.source);
       } catch (err) {
+        if (!active) return;
         setError(err instanceof Error ? err.message : "Failed to load news");
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
     loadNews();
-  }, [symbol, apiKey]);
+
+    return () => {
+      active = false;
+    };
+  }, [limit, refreshVersion]);
 
   if (loading) {
     return (
-      <ScrollArea className={`h-[500px] rounded-md border ${className}`}>
-        <div className="space-y-4 p-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="mt-2 h-4 w-1/2" />
-              </CardHeader>
-            </Card>
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle>东方财富资讯</CardTitle>
+          <CardDescription>加载中...</CardDescription>
+          <CardAction>
+            <Button variant="outline" size="sm" disabled>
+              刷新中...
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="space-y-2 rounded-md border p-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-3 w-2/5" />
+            </div>
           ))}
-        </div>
-      </ScrollArea>
+        </CardContent>
+      </Card>
     );
   }
 
   if (error) {
     return (
-      <ScrollArea className={`h-[300px] rounded-md border ${className}`}>
-        <Card className="m-4">
-          <CardHeader>
-            <CardTitle>Error loading news</CardTitle>
-            <CardDescription>{error}</CardDescription>
-          </CardHeader>
-        </Card>
-      </ScrollArea>
-    );
-  }
-
-  if (news.length === 0) {
-    return (
-      <ScrollArea className={`h-[300px] rounded-md border ${className}`}>
-        <Card className="m-4">
-          <CardHeader>
-            <CardTitle>No news available</CardTitle>
-          </CardHeader>
-        </Card>
-      </ScrollArea>
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle>东方财富资讯</CardTitle>
+          <CardDescription className="text-red-500">{error}</CardDescription>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              刷新最新消息
+            </Button>
+          </CardAction>
+        </CardHeader>
+      </Card>
     );
   }
 
   return (
-    <ScrollArea
-      className={`h-[500px] rounded-md border ${className}`}
-      type="always" // 强制显示滚动条
-    >
-      <div className="space-y-4 p-4">
-        {news.slice(0, visibleCount).map((item) => (
-          <Card key={item.url}>
-            <CardHeader className="pb-2">
-              <CardTitle
-                className="cursor-pointer text-lg"
-                onClick={() =>
-                  setExpandedId(expandedId === item.url ? null : item.url)
-                }
-              >
-                {item.title}
-              </CardTitle>
-              <CardDescription className="flex items-center justify-between">
-                <span>
-                  {item.date} • {item.source}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setExpandedId(expandedId === item.url ? null : item.url)
-                  }
-                >
-                  {expandedId === item.url ? "Collapse" : "Read more"}
-                </Button>
-              </CardDescription>
-            </CardHeader>
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle>东方财富资讯</CardTitle>
+        <CardDescription>
+          最新 {news.length} 条 / 总计 {total} 条 ({source})
+        </CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
+            {loading ? "刷新中..." : "刷新最新消息"}
+          </Button>
+        </CardAction>
+      </CardHeader>
 
-            {expandedId === item.url && (
-              <CardContent className="pt-0">
-                {/* 内容详情保持不变 */}
-              </CardContent>
-            )}
-          </Card>
-        ))}
-
-        {visibleCount < news.length && (
-          <div className="flex justify-center pt-2">
-            <Button variant="outline" onClick={loadMore} className="w-full">
-              Load More (+1)
-            </Button>
-          </div>
+      <CardContent>
+        {news.length === 0 ? (
+          <p className="text-muted-foreground text-sm">暂无资讯数据</p>
+        ) : (
+          <ScrollArea className="h-[620px] pr-3" type="always">
+            <div className="space-y-3">
+              {news.map((item, index) => (
+                <article key={`${item.url}-${index}`} className="space-y-2 rounded-md border p-3">
+                  <h4 className="text-sm font-semibold leading-5">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      {item.title || "（无标题）"}
+                    </a>
+                  </h4>
+                  <p className="text-muted-foreground text-sm leading-5">
+                    {truncate(item.summary || "（无摘要）", 170)}
+                  </p>
+                  <p className="text-muted-foreground text-xs">{item.publishedAt}</p>
+                </article>
+              ))}
+            </div>
+          </ScrollArea>
         )}
-      </div>
-    </ScrollArea>
+      </CardContent>
+    </Card>
   );
 }

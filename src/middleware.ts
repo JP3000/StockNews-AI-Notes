@@ -16,6 +16,7 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+  const appOrigin = request.nextUrl.origin;
   // console.log('middleware ran');
 
   const supabase = createServerClient(
@@ -27,7 +28,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -39,40 +40,86 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  const safeGetUser = async () => {
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error) {
+        if (error.name === "AuthSessionMissingError") {
+          return null;
+        }
+
+        console.error(error);
+        return null;
+      }
+
+      return user;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AuthSessionMissingError") {
+        return null;
+      }
+
+      console.error(error);
+      return null;
+    }
+  };
+
   const isAuthRoute = request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/sign-up"
 
   if (isAuthRoute) {
-    const { 
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await safeGetUser();
     if (user) {
-      return NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_BASE_URL))
+      return NextResponse.redirect(new URL("/", appOrigin))
     }
   }
 
   const {searchParams, pathname} = new URL(request.url)
   if(!searchParams.get("noteId") && pathname === "/" ) { 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await safeGetUser();
     if (user) {
-      const {newestNoteId} = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/fetch-newest-note?userId=${user.id}`,).then((res) => res.json());
-      if(newestNoteId) {
-        const url = request.nextUrl.clone()
-        url.searchParams.set("noteId", newestNoteId)
-        return NextResponse.redirect(url)
-      } else { 
-        const {noteId} = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/create-new-note?userId=${user.id}`,
-          { 
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            }
-          }
-        ).then((res) => res.json());
+      try {
+        const newestNoteUrl = new URL("/api/fetch-newest-note", appOrigin);
+        newestNoteUrl.searchParams.set("userId", user.id);
+
+        const newestNoteResponse = await fetch(newestNoteUrl, { cache: "no-store" });
+        if (!newestNoteResponse.ok) {
+          console.error("Failed to fetch newest note", newestNoteResponse.status);
+          return supabaseResponse;
+        }
+
+        const { newestNoteId } = await newestNoteResponse.json();
+
+        if (newestNoteId) {
+          const url = request.nextUrl.clone();
+          url.searchParams.set("noteId", newestNoteId);
+          return NextResponse.redirect(url);
+        }
+
+        const createNoteUrl = new URL("/api/create-new-note", appOrigin);
+        createNoteUrl.searchParams.set("userId", user.id);
+
+        const createNoteResponse = await fetch(createNoteUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!createNoteResponse.ok) {
+          console.error("Failed to create note", createNoteResponse.status);
+          return supabaseResponse;
+        }
+
+        const { noteId } = await createNoteResponse.json();
         const url = request.nextUrl.clone();
         url.searchParams.set("noteId", noteId);
-        return NextResponse.redirect(url)
+        return NextResponse.redirect(url);
+      } catch (error) {
+        console.error(error);
+        return supabaseResponse;
       }
     }
   }

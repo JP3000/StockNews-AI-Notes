@@ -43,7 +43,7 @@ export function SelectNoteButton({ note }: Props) {
       asChild
       className={`item-start gap-8 pr-12 ${note.id === noteId ? "bg-sidebar-accent/50" : ""}`}
     >
-      <Link href={`/?noteId=${note.id}`} className="flex h-fit flex-col">
+      <Link href={`/?noteId=${note.id}&ask=1`} className="flex h-fit flex-col">
         <p className="w-full truncate overflow-hidden text-ellipsis whitespace-nowrap">
           {noteText}
         </p>

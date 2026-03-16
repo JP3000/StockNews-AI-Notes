@@ -1,6 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+function isAuthSessionMissingError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.name === 'AuthSessionMissingError' ||
+      error.message.includes('Auth session missing'))
+  )
+}
+
 export async function createClient() {
   const cookieStore = await cookies()
 
@@ -28,13 +36,26 @@ export async function createClient() {
 }
 
 export async function getUser() {
-    const {auth} = await createClient()
-    const userObject = await auth.getUser()
+    try {
+      const {auth} = await createClient()
+      const userObject = await auth.getUser()
 
-    if(userObject.error){ 
+      if (userObject.error) {
+        if (isAuthSessionMissingError(userObject.error)) {
+          return null
+        }
+
         console.error(userObject.error)
         return null
-    }
+      }
 
-    return userObject.data.user;
+      return userObject.data.user
+    } catch (error) {
+      if (isAuthSessionMissingError(error)) {
+        return null
+      }
+
+      console.error(error)
+      return null
+    }
 }

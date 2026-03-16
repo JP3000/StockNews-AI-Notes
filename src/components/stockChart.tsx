@@ -30,7 +30,6 @@ interface StockChartProps {
     | "weekly"
     | "monthly";
   timePeriod?: number;
-  apiKey: string;
   chartType?: "line" | "area";
   showGrid?: boolean;
   showLegend?: boolean;
@@ -42,7 +41,6 @@ const StockChart: React.FC<StockChartProps> = ({
   symbol,
   interval = "daily",
   timePeriod = 30,
-  apiKey,
   chartType = "line",
   showGrid = true,
   showLegend = true,
@@ -57,7 +55,7 @@ const StockChart: React.FC<StockChartProps> = ({
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await fetchStockData(symbol, interval, timePeriod, apiKey);
+        const data = await fetchStockData(symbol, interval, timePeriod);
         setStockData(data);
         setError(null);
       } catch (err) {
@@ -71,7 +69,7 @@ const StockChart: React.FC<StockChartProps> = ({
     };
 
     loadData();
-  }, [symbol, interval, timePeriod, apiKey]);
+  }, [symbol, interval, timePeriod]);
 
   if (loading) return <div className="py-4 text-center">Loading chart...</div>;
   if (error)
@@ -110,7 +108,6 @@ const StockChart: React.FC<StockChartProps> = ({
   };
 
   const ChartComponent = chartType === "area" ? AreaChart : LineChart;
-  const DataComponent = chartType === "area" ? Area : Line;
 
   // Calculate average closing price for reference line
   const averageClose =
@@ -219,7 +216,7 @@ const StockChart: React.FC<StockChartProps> = ({
         </ChartComponent>
       </ResponsiveContainer>
       <div className="mt-2 text-center text-xs text-gray-500">
-        Data provided by Alpha Vantage
+        Data provided by AkShare
       </div>
     </div>
   );

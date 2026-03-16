@@ -6,6 +6,99 @@ import { handleError } from "@/lib/utils";
 import openai from "@/deepSeek";
 import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 
+function escapeMarkdown(input: string) {
+  return input
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_{}\[\]()#+\-.!|>])/g, "\\$1");
+}
+
+function getAIServiceErrorMessage(error: unknown) {
+  if (!(error && typeof error === "object")) {
+    return "AI service is temporarily unavailable.";
+  }
+
+  const maybeError = error as {
+    status?: number;
+    code?: string;
+    message?: string;
+    error?: { code?: string; message?: string };
+  };
+
+  const status = maybeError.status;
+  const code = maybeError.code || maybeError.error?.code || "";
+  const message = (maybeError.message || maybeError.error?.message || "").toLowerCase();
+
+  if (
+    status === 403 &&
+    (code === "unsupported_country_region_territory" ||
+      message.includes("country") ||
+      message.includes("region") ||
+      message.includes("territory"))
+  ) {
+    return "AI provider rejected this request due to region restrictions.";
+  }
+
+  if (status === 401) {
+    return "AI provider authentication failed. Please check DEEPSEEK_API_KEY.";
+  }
+
+  if (status === 429) {
+    return "AI provider rate limit reached. Please retry shortly.";
+  }
+
+  return "AI service is temporarily unavailable.";
+}
+
+function buildLocalFallbackReply(noteText: string, latestQuestion: string, reason: string) {
+  const lines = noteText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const titleLine = lines.find((line) => line.toLowerCase().startsWith("title:"));
+  const urlLine = lines.find((line) => line.toLowerCase().startsWith("url:"));
+  const bodyLines = lines.filter(
+    (line) => !line.toLowerCase().startsWith("title:") && !line.toLowerCase().startsWith("url:"),
+  );
+
+  const title = titleLine?.replace(/^title:\s*/i, "") || "Current note";
+  const sourceUrl = urlLine?.replace(/^url:\s*/i, "");
+  const bullets = bodyLines.slice(0, 3);
+
+  const fallbackPoints =
+    bullets.length > 0
+      ? bullets.map((item) => `- ${escapeMarkdown(item)}`)
+      : [
+          `- ${escapeMarkdown(noteText.slice(0, 260))}${
+            noteText.length > 260 ? "..." : ""
+          }`,
+        ];
+
+  return [
+    `> ${escapeMarkdown(reason)}`,
+    "",
+    "## Local Brief",
+    `- **Title:** ${escapeMarkdown(title)}`,
+    ...(sourceUrl
+      ? [
+          `- **Source:** [${escapeMarkdown(sourceUrl)}](${sourceUrl})`,
+        ]
+      : []),
+    "",
+    "### Key Points",
+    ...fallbackPoints,
+    ...(latestQuestion
+      ? [
+          "",
+          "### Your Question",
+          escapeMarkdown(latestQuestion),
+        ]
+      : []),
+    "",
+    "_Tip: You can continue asking follow-up questions based on this note context._",
+  ].join("\n");
+}
+
 export const createNoteAction = async (noteId: string) => {
   try {
     const user = await getUser();
@@ -59,123 +152,131 @@ export const deleteNoteAction = async (noteId: string) => {
 export const askAIAboutNotesAction = async (
   newQuestions: string[],
   responses: string[],
+  currentNoteId: string | null,
+  currentNoteText: string,
 ) => {
-  const user = await getUser();
-  if (!user) throw new Error("You must be logged in to ask AI questions");
+  try {
+    const user = await getUser();
+    if (!user) throw new Error("You must be logged in to ask AI questions");
 
-  const notes = await prisma.note.findMany({
-    where: { authorId: user.id },
-    orderBy: { createdAt: "desc" },
-    select: { text: true, createdAt: true, updatedAt: true },
-  });
-
-  if (notes.length === 0) {
-    return "You don't have any notes yet.";
-  }
-
-  // const formattedNotes = notes
-  //   .map((note) =>
-  //     `
-  //     Text: ${note.text}
-  //     Created at: ${note.createdAt}
-  //     Last updated: ${note.updatedAt}
-  //     `.trim(),
-  //   )
-  //   .join("\n");
-
-  // const messages: ChatCompletionMessageParam[] = [
-  //   {
-  //     role: "system",
-  //     content: `
-  //         You are a helpful assistant that answers questions about a user's notes. 
-  //         Assume all questions are related to the user's notes. 
-  //         Make sure that your answers are not too verbose and you speak succinctly. 
-  //         Your responses MUST be formatted in clean, valid HTML with proper structure. 
-  //         Use tags like <p>, <strong>, <em>, <ul>, <ol>, <li>, <h1> to <h6>, and <br> when appropriate. 
-  //         Do NOT wrap the entire response in a single <p> tag unless it's a single paragraph. 
-  //         Avoid inline styles, JavaScript, or custom attributes.
-          
-  //         Rendered like this in JSX:
-  //         <p dangerouslySetInnerHTML={{ __html: YOUR_RESPONSE }} />
-    
-  //         Here are the user's notes:
-  //         ${formattedNotes}
-  //         `,
-  //   },
-  // ];
-
-  const formattedNotes = notes
-  .map((note) =>
-    `
-    <article class="financial-note">
-      <h3>${note.text.split('\n')[0]?.replace('Title: ', '') || 'Untitled Note'}</h3>
-      ${note.text.split('\n').slice(1).map(line => {
-        if (line.startsWith('URL:')) {
-          return `<p><strong>Source Link:</strong> <a href="${line.replace('URL: ', '')}" target="_blank" rel="noopener">View Original</a></p>`;
-        }
-        return `<p>${line}</p>`;
-      }).join('')}
-      <footer>
-        <time>Created: ${new Date(note.createdAt).toLocaleDateString()}</time>
-        ${note.updatedAt !== note.createdAt ? 
-          `<time> | Updated: ${new Date(note.updatedAt).toLocaleDateString()}</time>` : ''}
-      </footer>
-    </article>
-    `.trim()
-  )
-  .join("\n<hr>\n");
-
-const messages: ChatCompletionMessageParam[] = [
-  {
-    role: "system",
-    content: `
-        You are a <strong>Senior Financial Research Assistant</strong> specialized in equity analysis and market trends.
-        Your responses should reflect Wall Street analyst-level professionalism with these characteristics:
-        
-        <ul>
-          <li>Always reference specific data points from the notes when available</li>
-          <li>Highlight <em>key financial metrics</em>, <em>technical indicators</em>, and <em>sentiment analysis</em></li>
-          <li>Use proper financial terminology (e.g. "support/resistance levels" instead of "high/low points")</li>
-          <li>Flag potential <span class="risk">risks</span> and <span class="opportunity">opportunities</span> explicitly</li>
-          <li>Maintain concise bullet-point style for actionable insights</li>
-        </ul>
-        
-        <h4>Current Market Context (Q2 2025):</h4>
-        <ul>
-          <li>AI chip sector P/E multiples expanding</li>
-          <li>Geopolitical tensions affecting semiconductor supply chains</li>
-          <li>Fed funds rate at 4.25-4.50%</li>
-        </ul>
-        
-        <h4>Notes Database:</h4>
-        ${formattedNotes}
-        
-        <style type="text/css">
-          .risk { color: #ef4444; font-weight: 600; }
-          .opportunity { color: #10b981; font-weight: 600; }
-          article.financial-note { 
-            border-left: 3px solid #3b82f6;
-            padding-left: 1rem;
-            margin-bottom: 1.5rem;
-          }
-          time { font-size: 0.875rem; color: #64748b; }
-        </style>
-        `.replace(/\n\s+/g, '\n').trim(),
-  }
-];
-
-
-  for (let i = 0; i < newQuestions.length; i++) {
-    messages.push({ role: "system", content: newQuestions[i] });
-    if (responses.length > i) {
-      messages.push({ role: "system", content: responses[i] });
+    if (!currentNoteId) {
+      return "Please select a note first, then ask your question.";
     }
+
+    const currentNote = await prisma.note.findFirst({
+      where: {
+        id: currentNoteId,
+        authorId: user.id,
+      },
+      select: {
+        text: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const noteTextForContext = (currentNoteText || currentNote?.text || "").trim();
+
+    if (!noteTextForContext) {
+      return "The selected note is empty. Add some note content first.";
+    }
+
+    const titleLine =
+      noteTextForContext
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.toLowerCase().startsWith("title:")) || "";
+    const sourceLine =
+      noteTextForContext
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.toLowerCase().startsWith("url:")) || "";
+
+    const noteTitle = titleLine.replace(/^title:\s*/i, "") || "Untitled Note";
+    const noteSourceUrl = sourceLine.replace(/^url:\s*/i, "");
+    const safeNoteTextForPrompt = noteTextForContext.replace(/```/g, "'''");
+
+    const selectedNoteContext = [
+      `Title: ${noteTitle}`,
+      ...(noteSourceUrl ? [`Source URL: ${noteSourceUrl}`] : []),
+      `Created At: ${new Date(currentNote?.createdAt || Date.now()).toLocaleDateString()}`,
+      ...(currentNote?.updatedAt && currentNote.updatedAt !== currentNote.createdAt
+        ? [`Updated At: ${new Date(currentNote.updatedAt).toLocaleDateString()}`]
+        : []),
+      "Raw Note Content:",
+      "```text",
+      safeNoteTextForPrompt,
+      "```",
+    ].join("\n");
+
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `
+You are FinSight, a senior financial analysis assistant focused on equities, sectors, macro drivers, and risk control.
+You must answer based on ONE selected note and the current user question.
+
+Core rules:
+1. Use only facts present in the selected note or prior chat turns.
+2. If a fact is missing, explicitly write: "Not provided in the selected note".
+3. Keep output concise, evidence-driven, and actionable.
+4. Do not fabricate data or guarantee returns.
+5. Respond in Simplified Chinese unless the user asks otherwise.
+6. Output valid Markdown only. Never output HTML tags.
+
+Required response structure:
+## 结论摘要
+- 3 to 5 concise bullets.
+
+## 核心逻辑
+- Explain key drivers, assumptions, and transmission paths.
+
+## 关键数据与证据
+| 项目 | 信息 | 来源 |
+|---|---|---|
+| ... | ... | 选中笔记 |
+
+## 风险与反证
+- List downside risks and what would invalidate the view.
+
+## 跟踪清单
+- [ ] Provide 3 to 6 measurable follow-up checks.
+
+Optional when relevant:
+## 情景比较
+| 情景 | 触发条件 | 影响 | 应对思路 |
+|---|---|---|---|
+
+Selected note context:
+${selectedNoteContext}
+        `.replace(/\n\s+/g, '\n').trim(),
+      }
+    ];
+
+
+    for (let i = 0; i < newQuestions.length; i++) {
+      messages.push({ role: "user", content: newQuestions[i] });
+      if (responses.length > i) {
+        messages.push({ role: "assistant", content: responses[i] });
+      }
+    }
+
+    const completion = await openai.chat.completions.create({
+      messages,
+      model: "deepseek-chat",
+    });
+
+    return completion.choices[0].message.content || "A problem has occurred";
+  } catch (error) {
+    console.error("askAIAboutNotesAction failed", error);
+
+    const noteTextForFallback = (currentNoteText || "").trim();
+    if (!noteTextForFallback) {
+      return "AI service is unavailable right now, and the selected note is empty.";
+    }
+
+    const latestQuestion = newQuestions[newQuestions.length - 1] || "";
+    const reason = getAIServiceErrorMessage(error);
+    return buildLocalFallbackReply(noteTextForFallback, latestQuestion, reason);
   }
-
-  const completion = await openai.chat.completions.create({
-    messages,
-    model: "deepseek-chat",
-  });
-
-  return completion.choices[0].message.content || "A problem has occurred";
 };
